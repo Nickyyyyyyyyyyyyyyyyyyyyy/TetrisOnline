@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Tetris</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* Оригінальні стилі */
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        @keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .pulse-animation { animation: pulse 1.5s infinite; }
+        .rotate-animation { animation: rotate 2s linear infinite; }
+        .tetris-block {
+            /* Повертаємо оригінальні розміри або використовуємо h-full/w-full */
+            width: 100%;
+            height: 100%; /* Розмір буде визначатись батьківською сіткою */
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+            transition: all 0.1s ease;
+        }
+        .tetris-block:hover { filter: brightness(1.1); }
+        .ghost-piece { opacity: 0.3; }
+        .touch-control { touch-action: none; user-select: none; }
+        /* Стиль для самої дошки, щоб забезпечити правильну сітку */
+        #game-board {
+            display: grid; /* Переконуємось, що це grid */
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(20, 1fr);
+            /* Розміри дошки визначаються зовнішнім контейнером або явними w/h */
+            width: 250px; /* Приклад: 10 колонок * 25px */
+            height: 500px; /* Приклад: 20 рядків * 25px */
+            gap: 1px; /* Tailwind gap-px */
+            background-color: #2d3748; /* Tailwind bg-gray-800 */
+            padding: 1px; /* Tailwind p-px */
+            border-radius: 0.5rem; /* Tailwind rounded-lg */
+            border: 1px solid #4a5568; /* Tailwind border-gray-600 */
+            overflow: hidden;
+        }
+        /* Стилі для Next/Hold контейнерів */
+        #next-piece, #hold-piece {
+             display: grid;
+             grid-template-columns: repeat(4, 1fr);
+             grid-template-rows: repeat(4, 1fr);
+             gap: 1px;
+             height: 6rem; /* Tailwind h-24 */
+             width: 6rem;  /* Tailwind w-24 */
+             background-color: #1a202c; /* Tailwind bg-gray-900 */
+             border-radius: 0.25rem; /* Tailwind rounded */
+             padding: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4 overflow-hidden">
+    <div id="main-menu" class="fixed inset-0 bg-gray-900 bg-opacity-95 flex flex-col items-center justify-center z-50 transition-opacity duration-300 hidden">
+        <div class="text-center mb-12">
+            <h1 class="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-500 via-pink-500 to-blue-500 bg-clip-text text-transparent">
+                MODERN TETRIS
+            </h1>
+            <p class="text-gray-400 text-lg">The classic puzzle game reimagined</p>
+        </div>
+        <div class="flex flex-col gap-4 w-full max-w-xs">
+            <button id="start-game-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 flex items-center justify-center">
+                <i class="fas fa-play mr-3"></i> Start Game
+            </button>
+            <button id="controls-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 flex items-center justify-center">
+                <i class="fas fa-gamepad mr-3"></i> Controls
+            </button>
+            <button id="sound-toggle-btn" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 px-8 rounded-lg text-xl transition-all transform hover:scale-105 flex items-center justify-center">
+                <i class="fas fa-volume-up mr-3"></i> Sound: ON
+            </button>
+        </div>
+        <div class="mt-12 text-gray-500 text-sm">
+            <p>Use keyboard or touch controls to play</p>
+        </div>
+    </div>
+
+    <div id="controls-modal" class="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 hidden">
+       <div class="bg-gray-800 rounded-xl p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold">Game Controls</h2>
+                <button id="close-controls-btn" class="text-gray-400 hover:text-white">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-arrow-left text-xl"></i></div><span>Move Left (Left Arrow / A)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-arrow-right text-xl"></i></div><span>Move Right (Right Arrow / D)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-arrow-down text-xl"></i></div><span>Soft Drop (Down Arrow / S)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-arrow-up text-xl"></i></div><span>Rotate (Up Arrow / W)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-space text-xl"></i></div><span>Hard Drop (Space)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-hand text-xl"></i></div><span>Hold (Shift / C)</span></div>
+                 <div class="flex items-center"><div class="bg-gray-700 rounded-lg p-3 mr-4 w-12 h-12 flex items-center justify-center"><i class="fas fa-pause text-xl"></i></div><span>Pause (P / Esc)</span></div>
+            </div>
+            <div class="mt-8 pt-4 border-t border-gray-700">
+                <h3 class="font-bold mb-2">Touch Controls</h3>
+                <p class="text-gray-400 text-sm">Swipe Left/Right/Down. Swipe Up or Tap to Rotate. Use on-screen buttons for Hard Drop and Pause.</p>
+            </div>
+            <button id="back-to-menu-btn" class="mt-6 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all"><i class="fas fa-arrow-left mr-2"></i> Back</button>
+        </div>
+    </div>
+
+    <div id="game-container" class="relative w-full max-w-lg flex justify-center items-start gap-4"> <div class="flex flex-col items-center">
+            <div class="flex justify-between items-center mb-4 w-full" style="max-width: 250px;"> <div class="bg-gray-800 rounded-lg p-2 shadow-lg text-center">
+                    <div class="text-xs text-gray-400">Score</div>
+                    <div id="score" class="text-xl font-bold">0</div>
+                </div>
+                <div class="text-center">
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent">TETRIS</h1>
+                    <div class="text-xs text-gray-400">Level: <span id="level-display">1</span></div>
+                </div>
+                <div class="flex gap-2">
+                    <button id="pause-btn" title="Pause (P/Esc)" class="bg-yellow-600 hover:bg-yellow-700 text-white font-bold w-10 h-10 rounded-lg transition-all flex items-center justify-center"><i class="fas fa-pause"></i></button>
+                    <button id="menu-btn" title="Main Menu" class="bg-gray-700 hover:bg-gray-600 text-white font-bold w-10 h-10 rounded-lg transition-all flex items-center justify-center"><i class="fas fa-bars"></i></button>
+                </div>
+            </div>
+
+            <div class="relative">
+                 <div id="game-board">
+                     </div>
+                <div id="pause-overlay" class="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center rounded-lg hidden">
+                    <div class="text-center"><h2 class="text-3xl font-bold mb-4">PAUSED</h2><button id="resume-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105"><i class="fas fa-play mr-2"></i> Resume</button></div>
+                </div>
+                <div id="game-over-overlay" class="absolute inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center rounded-lg hidden">
+                    <div class="text-center p-6"><h2 class="text-3xl font-bold text-red-500 mb-2">GAME OVER</h2><div class="text-xl mb-4">Score: <span id="final-score" class="font-bold">0</span></div><div class="flex gap-2 justify-center"><button id="restart-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all transform hover:scale-105"><i class="fas fa-redo mr-2"></i> Play Again</button><button id="back-to-menu-btn-2" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-all transform hover:scale-105"><i class="fas fa-home mr-2"></i> Menu</button></div></div>
+                </div>
+            </div>
+             <div class="bg-gray-800 rounded-lg p-2 shadow-lg mt-4 text-center w-24"> <div class="text-xs text-gray-400">Lines</div>
+                 <div id="lines" class="text-xl font-bold">0</div>
+             </div>
+        </div>
+
+        <div class="flex flex-col gap-4 w-24 mt-16"> <div class="bg-gray-800 rounded-lg p-2 shadow-lg">
+                 <div class="text-xs text-gray-400 mb-1 text-center">Next</div>
+                 <div id="next-piece"></div>
+             </div>
+             <div class="bg-gray-800 rounded-lg p-2 shadow-lg">
+                 <div class="text-xs text-gray-400 mb-1 text-center">Hold</div>
+                 <div id="hold-piece"></div>
+             </div>
+        </div>
+
+        <div id="touch-controls" class="fixed bottom-4 left-0 right-0 px-4 grid grid-cols-3 gap-2 touch-control md:hidden">
+            <div class="col-span-3 flex justify-center gap-2">
+                <button id="rotate-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-6 rounded-lg text-xl touch-control"><i class="fas fa-rotate"></i></button>
+                <button id="hard-drop-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-6 rounded-lg text-xl touch-control"><i class="fas fa-arrow-down-to-line"></i></button>
+            </div>
+            <button id="left-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-8 px-6 rounded-lg text-xl touch-control"><i class="fas fa-arrow-left"></i></button>
+            <button id="down-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-8 px-6 rounded-lg text-xl touch-control"><i class="fas fa-arrow-down"></i></button>
+            <button id="right-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-8 px-6 rounded-lg text-xl touch-control"><i class="fas fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    <audio id="move-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-quick-jump-arcade-game-239.mp3" preload="auto"></audio>
+    <audio id="rotate-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-unlock-game-notification-253.mp3" preload="auto"></audio>
+    <audio id="drop-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-mechanical-bling-210.mp3" preload="auto"></audio>
+    <audio id="clear-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-achievement-bell-600.mp3" preload="auto"></audio>
+    <audio id="game-over-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-retro-arcade-lose-2027.mp3" preload="auto"></audio>
+
+    <script>
+        // --- Game State ---
+        const gameState = {
+            board: Array(20).fill().map(() => Array(10).fill(0)),
+            currentPiece: null,
+            nextPiece: null,
+            holdPiece: null,
+            canHold: true,
+            position: {x: 0, y: 0},
+            score: 0,
+            lines: 0,
+            level: 1,
+            gameOver: false,
+            paused: false,
+            soundEnabled: true,
+            highScore: localStorage.getItem('tetrisHighScore') || 0,
+            dropInterval: 1000,
+            dropStart: null,
+            lastDrop: 0,
+            touchStartX: 0,
+            touchStartY: 0,
+            gameLoop: null
+        };
+
+        // --- Tetromino Shapes and Colors ---
+        const tetrominoes = {
+            I: { shape: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]], color: 'bg-cyan-500' },
+            J: { shape: [[1,0,0],[1,1,1],[0,0,0]], color: 'bg-blue-500' },
+            L: { shape: [[0,0,1],[1,1,1],[0,0,0]], color: 'bg-orange-500' },
+            O: { shape: [[1,1],[1,1]], color: 'bg-yellow-500' },
+            S: { shape: [[0,1,1],[1,1,0],[0,0,0]], color: 'bg-green-500' },
+            T: { shape: [[0,1,0],[1,1,1],[0,0,0]], color: 'bg-purple-500' },
+            Z: { shape: [[1,1,0],[0,1,1],[0,0,0]], color: 'bg-red-500' }
+        };
+
+        // --- DOM Element References ---
+        const mainMenu = document.getElementById('main-menu');
+        const gameContainer = document.getElementById('game-container');
+        const gameBoard = document.getElementById('game-board');
+        const nextPieceDisplay = document.getElementById('next-piece');
+        const holdPieceDisplay = document.getElementById('hold-piece');
+        const scoreDisplay = document.getElementById('score');
+        const linesDisplay = document.getElementById('lines');
+        const levelDisplay = document.getElementById('level-display');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const pauseOverlay = document.getElementById('pause-overlay');
+        const gameOverOverlay = document.getElementById('game-over-overlay');
+        const controlsModal = document.getElementById('controls-modal');
+        // Buttons
+        const soundToggleBtn = document.getElementById('sound-toggle-btn');
+        const startGameBtn = document.getElementById('start-game-btn');
+        const controlsBtn = document.getElementById('controls-btn');
+        const closeControlsBtn = document.getElementById('close-controls-btn');
+        const backToMenuBtn = document.getElementById('back-to-menu-btn');
+        const backToMenuBtn2 = document.getElementById('back-to-menu-btn-2');
+        const pauseBtn = document.getElementById('pause-btn');
+        const menuBtn = document.getElementById('menu-btn');
+        const resumeBtn = document.getElementById('resume-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        // Touch Buttons (Check for existence before adding listeners later)
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+        const downBtn = document.getElementById('down-btn');
+        const rotateBtn = document.getElementById('rotate-btn');
+        const hardDropBtn = document.getElementById('hard-drop-btn');
+        // Audio Elements
+        const moveSound = document.getElementById('move-sound');
+        const rotateSound = document.getElementById('rotate-sound');
+        const dropSound = document.getElementById('drop-sound');
+        const clearSound = document.getElementById('clear-sound');
+        const gameOverSound = document.getElementById('game-over-sound');
+
+        // ====================================== //
+        // === ALL GAME FUNCTIONS DEFINITIONS === //
+        // ====================================== //
+
+        // --- Initialize Board ---
+        function initBoard() {
+            console.log("Initializing board...");
+            gameBoard.innerHTML = ''; // Clear previous cells
+            const cellClass = 'tetris-block bg-gray-700'; // Base class for empty cells
+
+            for (let y = 0; y < 20; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const cell = document.createElement('div');
+                    // Class defines appearance, grid handles size/position
+                    cell.className = cellClass;
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    gameBoard.appendChild(cell);
+                }
+            }
+            console.log(`Board initialized with ${gameBoard.children.length} cells.`);
+            initPieceDisplay(nextPieceDisplay);
+            initPieceDisplay(holdPieceDisplay);
+        }
+
+        // --- Initialize Small Displays (Next/Hold) ---
+        function initPieceDisplay(display) {
+            if (!display) return; // Safety check
+            display.innerHTML = '';
+            const cellClass = 'bg-transparent'; // Transparent cells
+            for (let y = 0; y < 4; y++) {
+                for (let x = 0; x < 4; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = cellClass;
+                    display.appendChild(cell);
+                }
+            }
+        }
+
+        // --- Get Random Tetromino --- VITAL FUNCTION ---
+        function getRandomTetromino() {
+            const keys = Object.keys(tetrominoes);
+            const key = keys[Math.floor(Math.random() * keys.length)];
+            // Return a deep copy to prevent mutation issues
+            return JSON.parse(JSON.stringify({
+                type: key,
+                shape: tetrominoes[key].shape,
+                color: tetrominoes[key].color
+            }));
+        }
+
+        // --- Render Game State ---
+        function render() {
+            const cells = gameBoard.querySelectorAll('.tetris-block');
+            if (!cells || cells.length !== 200) {
+                console.error("Render error: Board cells not found or incorrect count.", cells?.length);
+                return; // Stop render if board isn't right
+            }
+
+            // 1. Reset board cells to locked piece colors or default gray
+            gameState.board.forEach((row, y) => {
+                row.forEach((colorCode, x) => {
+                    const index = y * 10 + x;
+                    let cellClass = 'tetris-block bg-gray-700'; // Default
+                    if (colorCode) {
+                        // Find the tetromino color class based on the stored code (e.g., 'cyan')
+                        const pieceData = Object.values(tetrominoes).find(p => p.color.includes(colorCode));
+                        if (pieceData) {
+                            cellClass = `tetris-block ${pieceData.color}`;
+                        }
+                    }
+                    cells[index].className = cellClass; // Apply class (overwrites previous)
+                    cells[index].classList.remove('ghost-piece'); // Ensure no ghost style remains
+                });
+            });
+
+            // 2. Render ghost piece (if applicable)
+            if (gameState.currentPiece && !gameState.gameOver && !gameState.paused) {
+                 const { shape, color } = gameState.currentPiece;
+                 const { x, y } = gameState.position;
+                 const ghostY = getDropPosition();
+
+                 for (let py = 0; py < shape.length; py++) {
+                     for (let px = 0; px < shape[py].length; px++) {
+                         if (shape[py][px]) {
+                             const boardX = x + px;
+                             const boardY = ghostY + py;
+                             if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
+                                 const index = boardY * 10 + boardX;
+                                 // Only draw ghost on empty background cells
+                                 if (cells[index] && !gameState.board[boardY][boardX]) {
+                                     cells[index].classList.add('ghost-piece');
+                                     // Add color class for ghost, but keep existing bg-gray-700 for structure if needed
+                                     // Or just add the color class directly if opacity handles blending
+                                     cells[index].classList.add(color);
+                                     cells[index].classList.remove('bg-gray-700'); // Remove default gray
+                                 }
+                             }
+                         }
+                     }
+                 }
+
+                 // 3. Render the actual current piece over the board/ghost
+                 for (let py = 0; py < shape.length; py++) {
+                     for (let px = 0; px < shape[py].length; px++) {
+                         if (shape[py][px]) {
+                             const boardX = x + px;
+                             const boardY = y + py;
+                             // Render only parts within the visible board area
+                             if (boardY >= 0 && boardY < 20 && boardX >= 0 && boardX < 10) {
+                                 const index = boardY * 10 + boardX;
+                                 if (cells[index]) {
+                                     cells[index].className = `tetris-block ${color}`; // Set exact class
+                                     cells[index].classList.remove('ghost-piece'); // Ensure ghost is removed
+                                 }
+                             }
+                         }
+                     }
+                 }
+            }
+
+            // 4. Render Next and Hold pieces
+            renderPieceDisplay(nextPieceDisplay, gameState.nextPiece);
+            renderPieceDisplay(holdPieceDisplay, gameState.holdPiece);
+        }
+
+        // --- Render Small Displays (Next/Hold) ---
+        function renderPieceDisplay(display, piece) {
+            if (!display) return;
+            const cells = display.querySelectorAll('div');
+            // Reset display cells to transparent
+            cells.forEach(cell => cell.className = 'bg-transparent');
+
+            if (!piece) return; // No piece to display
+
+            const { shape, color } = piece;
+            const size = shape.length; // Assumes square matrix for piece shape
+            // Center the piece in the 4x4 grid
+            const offsetX = Math.floor((4 - size) / 2);
+            const offsetY = Math.floor((4 - size) / 2);
+
+            for (let py = 0; py < shape.length; py++) {
+                for (let px = 0; px < shape[py].length; px++) {
+                    if (shape[py][px]) {
+                        const displayX = px + offsetX;
+                        const displayY = py + offsetY;
+                        if (displayX >= 0 && displayX < 4 && displayY >= 0 && displayY < 4) {
+                            const index = displayY * 4 + displayX;
+                            if(cells[index]) {
+                                 cells[index].className = `tetris-block ${color}`; // Apply style
+                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Collision Detection ---
+        function checkCollision(shape, x, y) {
+            for (let py = 0; py < shape.length; py++) {
+                for (let px = 0; px < shape[py].length; px++) {
+                    if (shape[py][px]) {
+                        const boardX = x + px;
+                        const boardY = y + py;
+                        // Check boundaries (left, right, bottom) and existing locked pieces
+                        if ( boardX < 0 || boardX >= 10 || boardY >= 20 ||
+                            (boardY >= 0 && gameState.board[boardY] && gameState.board[boardY][boardX])
+                        ) {
+                            return true; // Collision detected
+                        }
+                    }
+                }
+            }
+            return false; // No collision
+        }
+
+        // --- Piece Rotation ---
+        function rotate() {
+            if (gameState.gameOver || gameState.paused || !gameState.currentPiece) return;
+
+            const originalShape = gameState.currentPiece.shape;
+            const N = originalShape.length;
+            // Create a new empty matrix for the rotated shape
+            const rotatedShape = Array(N).fill(0).map(() => Array(N).fill(0));
+
+            // Perform rotation (transpose + reverse rows)
+            for (let y = 0; y < N; y++) {
+                for (let x = 0; x < N; x++) {
+                    rotatedShape[x][N - 1 - y] = originalShape[y][x];
+                }
+            }
+
+            // Check for collision at current position
+            if (!checkCollision(rotatedShape, gameState.position.x, gameState.position.y)) {
+                gameState.currentPiece.shape = rotatedShape;
+                playSound(rotateSound);
+            } else {
+                // Try wall kicks (simple +/- 1, +/- 2)
+                const kicks = [1, -1, 2, -2];
+                for (const kick of kicks) {
+                    if (!checkCollision(rotatedShape, gameState.position.x + kick, gameState.position.y)) {
+                        gameState.position.x += kick;
+                        gameState.currentPiece.shape = rotatedShape;
+                        playSound(rotateSound);
+                        render(); // Re-render immediately after successful kick/rotation
+                        return; // Exit after success
+                    }
+                }
+                // If no kick works, rotation fails
+            }
+            render(); // Re-render after rotation attempt
+        }
+
+        // --- Piece Movement ---
+        function moveLeft() {
+            if (gameState.gameOver || gameState.paused || !gameState.currentPiece) return;
+            if (!checkCollision(gameState.currentPiece.shape, gameState.position.x - 1, gameState.position.y)) {
+                gameState.position.x--;
+                playSound(moveSound);
+                render();
+            }
+        }
+
+        function moveRight() {
+            if (gameState.gameOver || gameState.paused || !gameState.currentPiece) return;
+            if (!checkCollision(gameState.currentPiece.shape, gameState.position.x + 1, gameState.position.y)) {
+                gameState.position.x++;
+                playSound(moveSound);
+                render();
+            }
+        }
+
+        function moveDown() { // Soft drop
+            if (gameState.gameOver || gameState.paused || !gameState.currentPiece) return false; // Indicate failure/lock
+            if (!checkCollision(gameState.currentPiece.shape, gameState.position.x, gameState.position.y + 1)) {
+                gameState.position.y++;
+                // Optional: play sound only on manual soft drop, not auto-drop?
+                // playSound(moveSound);
+                render();
+                return true; // Indicate successful move
+            } else {
+                lockPiece(); // Lock piece if it can't move down
+                return false; // Indicate piece locked
+            }
+        }
+
+        // --- Ghost Piece Position ---
+        function getDropPosition() {
+            if (!gameState.currentPiece) return gameState.position.y;
+            let ghostY = gameState.position.y;
+            while (!checkCollision(gameState.currentPiece.shape, gameState.position.x, ghostY + 1)) {
+                ghostY++;
+            }
+            return ghostY;
+        }
+
+        // --- Hard Drop ---
+        function hardDrop() {
+            if (gameState.gameOver || gameState.paused || !gameState.currentPiece) return;
+            gameState.position.y = getDropPosition(); // Move to final position
+            lockPiece(); // Lock immediately
+            playSound(dropSound);
+        }
+
+        // --- Lock Piece in Place ---
+        function lockPiece() {
+            if (!gameState.currentPiece) return;
+
+            const { shape, color } = gameState.currentPiece;
+            const { x, y } = gameState.position;
+            let isGameOver = false;
+
+            // Transfer piece to board
+            for (let py = 0; py < shape.length; py++) {
+                for (let px = 0; px < shape[py].length; px++) {
+                    if (shape[py][px]) {
+                        const boardX = x + px;
+                        const boardY = y + py;
+                        // Check for locking above the visible board (Game Over)
+                        if (boardY < 0) {
+                            isGameOver = true;
+                            break; // Stop processing this piece
+                        }
+                        // Only lock within bounds
+                        if (boardY < 20 && boardX >= 0 && boardX < 10) {
+                             // Store only the color name part (e.g., 'cyan')
+                             gameState.board[boardY][boardX] = color.replace('bg-', '').replace('-500', '');
+                        }
+                    }
+                }
+                 if (isGameOver) break;
+            }
+
+            // If any part locked above board, trigger Game Over
+            if (isGameOver) {
+                gameOver();
+                return; // Exit lockPiece
+            }
+
+            // Piece locked successfully, check for line clears
+            checkLines();
+
+            // Allow holding the next piece
+            gameState.canHold = true;
+
+            // Spawn next piece
+            gameState.currentPiece = gameState.nextPiece;
+            gameState.nextPiece = getRandomTetromino(); // Get a new next piece
+            gameState.position = { x: 3, y: 0 }; // Reset position
+
+            // Check for collision immediately upon spawning (Game Over if spawn fails)
+            if (checkCollision(gameState.currentPiece.shape, gameState.position.x, gameState.position.y)) {
+                // Need to render the locked piece before showing game over
+                 render();
+                 gameOver();
+                return; // Exit lockPiece
+            }
+
+            // Update displays and render the new state
+            updateDisplays();
+            render();
+        }
+
+        // --- Check and Clear Completed Lines ---
+        function checkLines() {
+            let linesCleared = 0;
+            let newBoard = [];
+            for (let y = 0; y < 20; y++) {
+                if (gameState.board[y].every(cell => cell !== 0)) {
+                    linesCleared++;
+                } else {
+                    newBoard.push(gameState.board[y]); // Keep rows that are not full
+                }
+            }
+
+            // Add empty rows at the top for each cleared line
+            for (let i = 0; i < linesCleared; i++) {
+                newBoard.unshift(Array(10).fill(0));
+            }
+
+            gameState.board = newBoard; // Update the board state
+
+            if (linesCleared > 0) {
+                // Update score and lines
+                const points = [0, 40, 100, 300, 1200]; // Points for 1, 2, 3, 4 lines
+                gameState.score += points[linesCleared] * gameState.level;
+                gameState.lines += linesCleared;
+
+                // Check for level up (e.g., every 10 lines)
+                const newLevel = Math.floor(gameState.lines / 10) + 1;
+                if (newLevel > gameState.level) {
+                    gameState.level = newLevel;
+                    // Increase speed (decrease interval, with a minimum)
+                    gameState.dropInterval = Math.max(100, 1000 - (gameState.level - 1) * 50);
+                }
+
+                playSound(clearSound);
+                updateDisplays(); // Update UI for score/lines/level
+            }
+        }
+
+        // --- Hold Piece ---
+        function hold() {
+            if (!gameState.canHold || gameState.gameOver || gameState.paused) return;
+
+            if (gameState.holdPiece) { // Swap
+                [gameState.currentPiece, gameState.holdPiece] = [gameState.holdPiece, gameState.currentPiece];
+            } else { // First hold
+                gameState.holdPiece = gameState.currentPiece;
+                gameState.currentPiece = gameState.nextPiece;
+                gameState.nextPiece = getRandomTetromino();
+            }
+
+            gameState.position = { x: 3, y: 0 }; // Reset position for new/swapped piece
+            gameState.canHold = false; // Can only hold once per lock
+            playSound(rotateSound); // Use a sound for hold action
+            render(); // Update board and displays
+        }
+
+        // --- Update UI Displays (Score, Lines, Level) ---
+        function updateDisplays() {
+            scoreDisplay.textContent = gameState.score;
+            linesDisplay.textContent = gameState.lines;
+            levelDisplay.textContent = gameState.level;
+            // Next/Hold pieces are updated during the main render()
+        }
+
+        // --- Game Over ---
+        function gameOver() {
+            console.log("Game Over! Final Score:", gameState.score);
+            gameState.gameOver = true;
+            if (gameState.gameLoop) {
+                cancelAnimationFrame(gameState.gameLoop);
+                gameState.gameLoop = null;
+            }
+
+            // Update high score
+            if (gameState.score > gameState.highScore) {
+                gameState.highScore = gameState.score;
+                localStorage.setItem('tetrisHighScore', gameState.highScore);
+                console.log("New High Score:", gameState.highScore);
+            }
+
+            finalScoreDisplay.textContent = gameState.score;
+            gameOverOverlay.classList.remove('hidden'); // Show overlay
+            playSound(gameOverSound);
+        }
+
+        // --- Pause/Resume ---
+        function togglePause() {
+            if (gameState.gameOver) return;
+            gameState.paused = !gameState.paused;
+
+            if (gameState.paused) {
+                if (gameState.gameLoop) cancelAnimationFrame(gameState.gameLoop);
+                gameState.gameLoop = null;
+                pauseOverlay.classList.remove('hidden');
+                console.log("Game paused.");
+            } else {
+                pauseOverlay.classList.add('hidden');
+                // Reset drop timers to prevent instant drop after resume
+                gameState.dropStart = Date.now();
+                gameState.lastDrop = gameState.dropStart;
+                gameState.gameLoop = requestAnimationFrame(gameUpdate);
+                console.log("Game resumed.");
+            }
+        }
+
+        // --- Show Main Menu ---
+        function showMainMenu() {
+            if (gameState.gameLoop) cancelAnimationFrame(gameState.gameLoop);
+            gameState.gameLoop = null;
+            gameState.paused = false; // Ensure not stuck in paused state
+            mainMenu.classList.remove('hidden');
+            gameContainer.classList.add('hidden');
+            pauseOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            console.log("Returned to main menu.");
+        }
+
+        // --- Toggle Sound ---
+        function toggleSound() {
+            gameState.soundEnabled = !gameState.soundEnabled;
+            soundToggleBtn.innerHTML = gameState.soundEnabled ?
+                '<i class="fas fa-volume-up mr-3"></i> Sound: ON' :
+                '<i class="fas fa-volume-mute mr-3"></i> Sound: OFF';
+            console.log(`Sound enabled: ${gameState.soundEnabled}`);
+        }
+
+        // --- Play Sound Utility ---
+        function playSound(audioElement) {
+            if (!gameState.soundEnabled || !audioElement) return;
+            audioElement.currentTime = 0; // Rewind
+            audioElement.play().catch(error => console.error("Sound play error:", error));
+        }
+
+        // --- Touch Input Handlers ---
+        let touchAction = null;
+        let touchStartPos = { x: 0, y: 0 };
+        let touchMoveThreshold = 30; // Pixels
+        let tapTimeout = null;
+        let tapDuration = 200; // Milliseconds
+
+        function handleTouchStart(e) {
+            if (gameState.paused || gameState.gameOver) return;
+            e.preventDefault(); // Prevent page scroll/zoom
+            touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            touchAction = null;
+            tapTimeout = setTimeout(() => { tapTimeout = null; }, tapDuration); // Timeout for tap detection
+        }
+
+        function handleTouchMove(e) {
+            if (gameState.paused || gameState.gameOver || !touchStartPos) return;
+            e.preventDefault();
+            const touchCurrentPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            const deltaX = touchCurrentPos.x - touchStartPos.x;
+            const deltaY = touchCurrentPos.y - touchStartPos.y;
+
+            // Detect swipe direction only once per touch
+            if (touchAction === null && (Math.abs(deltaX) > touchMoveThreshold || Math.abs(deltaY) > touchMoveThreshold)) {
+                if (tapTimeout) { clearTimeout(tapTimeout); tapTimeout = null; } // Not a tap
+
+                if (Math.abs(deltaX) > Math.abs(deltaY)) { // Horizontal
+                    touchAction = deltaX > 0 ? 'swipeRight' : 'swipeLeft';
+                } else { // Vertical
+                    touchAction = deltaY > 0 ? 'swipeDown' : 'swipeUp'; // Assign swipeUp (can be rotate or hard drop)
+                }
+                executeTouchAction(touchAction);
+                touchStartPos = touchCurrentPos; // Reset start for potential continuous swipe detection later
+            }
+        }
+
+        function handleTouchEnd(e) {
+            if (gameState.paused || gameState.gameOver) return;
+            e.preventDefault();
+            if (tapTimeout) { // If timeout still active, it was a tap
+                clearTimeout(tapTimeout);
+                tapTimeout = null;
+                touchAction = 'tap';
+                executeTouchAction(touchAction);
+            }
+            touchStartPos = null; // Reset tracking
+            touchAction = null;
+        }
+
+        function executeTouchAction(action) {
+            if (!action || gameState.paused || gameState.gameOver) return;
+            console.log("Touch action:", action);
+            switch (action) {
+                case 'swipeLeft': moveLeft(); break;
+                case 'swipeRight': moveRight(); break;
+                case 'swipeDown': moveDown(); break; // Soft drop
+                case 'swipeUp': rotate(); break; // Assign swipe up to rotate
+                case 'tap': rotate(); break; // Assign tap to rotate
+            }
+        }
+
+        // --- Game Loop ---
+        function gameUpdate(timestamp) {
+            if (gameState.paused || gameState.gameOver) {
+                gameState.gameLoop = requestAnimationFrame(gameUpdate); // Keep requesting frame even if paused/over
+                return;
+            }
+            if (!gameState.dropStart) gameState.dropStart = timestamp; // Init timer
+
+            // Auto-drop based on interval
+            if (timestamp - gameState.lastDrop > gameState.dropInterval) {
+                moveDown(); // moveDown handles locking if needed
+                gameState.lastDrop = timestamp; // Update time regardless of move success for consistent timing
+            }
+
+            render(); // Render the current state
+            gameState.gameLoop = requestAnimationFrame(gameUpdate); // Request next frame
+        }
+
+        // --- Start Game Function --- VITAL FUNCTION ---
+        function startGame() {
+            console.log("Attempting to start game...");
+            // Reset Full Game State
+            Object.assign(gameState, {
+                board: Array(20).fill().map(() => Array(10).fill(0)),
+                currentPiece: getRandomTetromino(), // Call the function HERE
+                nextPiece: getRandomTetromino(),    // And HERE
+                holdPiece: null,
+                canHold: true,
+                position: { x: 3, y: 0 },
+                score: 0,
+                lines: 0,
+                level: 1,
+                gameOver: false,
+                paused: false,
+                dropInterval: 1000,
+                dropStart: null, // Reset timer start
+                lastDrop: 0,     // Reset last drop time
+                gameLoop: null   // Clear any previous loop ID
+            });
+
+            // Ensure overlays are hidden
+            pauseOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+
+            // Initialize displays
+            initBoard(); // Creates the board cells
+            updateDisplays(); // Updates score/level/lines text
+            render(); // Renders initial pieces and board state
+
+            // Switch view from menu to game
+            mainMenu.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+
+            // Start the game loop
+            if (gameState.gameLoop) cancelAnimationFrame(gameState.gameLoop); // Clear old loop just in case
+            gameState.dropStart = Date.now(); // Set timer start point
+            gameState.lastDrop = gameState.dropStart; // Align last drop time
+            gameState.gameLoop = requestAnimationFrame(gameUpdate);
+            console.log("Game started successfully. Loop ID:", gameState.gameLoop);
+        }
+
+        // ============================= //
+        // === EVENT LISTENERS SETUP === //
+        // ============================= //
+
+        function setupEventListeners() {
+            console.log("Setting up event listeners...");
+            // Menu Buttons
+            startGameBtn?.addEventListener('click', startGame);
+            controlsBtn?.addEventListener('click', () => controlsModal?.classList.remove('hidden'));
+            closeControlsBtn?.addEventListener('click', () => controlsModal?.classList.add('hidden'));
+            backToMenuBtn?.addEventListener('click', () => controlsModal?.classList.add('hidden'));
+            soundToggleBtn?.addEventListener('click', toggleSound);
+
+            // In-Game Buttons
+            pauseBtn?.addEventListener('click', togglePause);
+            menuBtn?.addEventListener('click', showMainMenu);
+            resumeBtn?.addEventListener('click', togglePause); // In pause overlay
+            restartBtn?.addEventListener('click', startGame); // In game over overlay
+            backToMenuBtn2?.addEventListener('click', showMainMenu); // In game over overlay
+
+            // Touch control buttons (Check existence)
+            leftBtn?.addEventListener('click', moveLeft);
+            rightBtn?.addEventListener('click', moveRight);
+            downBtn?.addEventListener('click', moveDown);
+            rotateBtn?.addEventListener('click', rotate);
+            hardDropBtn?.addEventListener('click', hardDrop);
+
+            // Keyboard controls
+            document.addEventListener('keydown', (e) => {
+                if (!controlsModal?.classList.contains('hidden') && e.key === 'Escape') { controlsModal.classList.add('hidden'); return; }
+                if (!pauseOverlay?.classList.contains('hidden') && e.key === 'Escape') { togglePause(); return; }
+                if (gameState.gameOver || gameState.paused || !mainMenu?.classList.contains('hidden')) { return; }
+
+                let handled = true; // Assume key is handled to prevent default
+                switch (e.key) {
+                    case 'ArrowLeft': case 'a': moveLeft(); break;
+                    case 'ArrowRight': case 'd': moveRight(); break;
+                    case 'ArrowDown': case 's': moveDown(); break;
+                    case 'ArrowUp': case 'w': rotate(); break;
+                    case ' ': hardDrop(); break;
+                    case 'Shift': case 'c': hold(); break;
+                    case 'p': case 'Escape': togglePause(); break;
+                    default: handled = false; // Key not used by game
+                }
+                if (handled) e.preventDefault(); // Prevent default action if key was used
+            });
+
+            // Touch controls on game board
+            gameBoard?.addEventListener('touchstart', handleTouchStart, { passive: false });
+            gameBoard?.addEventListener('touchmove', handleTouchMove, { passive: false });
+            gameBoard?.addEventListener('touchend', handleTouchEnd, { passive: false });
+            console.log("Event listeners setup complete.");
+        }
+
+        // ======================== //
+        // === INITIAL DOM LOAD === //
+        // ======================== //
+
+        document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM fully loaded and parsed.");
+            try {
+                 // Ensure all elements exist before setting listeners/starting
+                 if (!gameBoard || !scoreDisplay || !mainMenu || !gameContainer) {
+                     throw new Error("One or more essential DOM elements not found!");
+                 }
+                 setupEventListeners(); // Setup listeners first
+                 startGame();         // Then start the game
+            } catch (error) {
+                console.error("Initialization Error:", error);
+                document.body.innerHTML = `<div class="text-red-500 p-4 font-bold text-center">Error loading game: ${error.message}<br>Check console (F12) for details.</div>`;
+            }
+        });
+
+    </script>
+</body>
+</html>
